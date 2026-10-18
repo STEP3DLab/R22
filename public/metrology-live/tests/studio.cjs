@@ -4,10 +4,10 @@ const dir=fs.existsSync(path.join(__dirname,'../dist/index.html'))?path.join(__d
 const html=fs.readFileSync(path.join(dir,'index.html'),'utf8');
 const windowEvents={};const els={},g=new Proxy({createLinearGradient(){return {addColorStop(){}}}},{get:(o,k)=>o[k]||(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
 class E{
- constructor(tag='div',attrs=''){this.tagName=tag.toUpperCase();this.style={};this.dataset={};this.events={};this.children=[];this.value='';this.textContent='';this.clientHeight=570;this.clientWidth=800;this.classes=new Set();this.classList={add:(...v)=>v.forEach(x=>this.classes.add(x)),remove:(...v)=>v.forEach(x=>this.classes.delete(x)),contains:v=>this.classes.has(v),toggle:(v,b)=>{b=b===undefined?!this.classes.has(v):b;b?this.classes.add(v):this.classes.delete(v);return b}};for(const m of attrs.matchAll(/([\w-]+)="([^"]*)"/g)){if(m[1].startsWith('data-'))this.dataset[m[1].slice(5)]=m[2];else this[m[1]]=m[2]}if(this.id)els[this.id]=this}
+ constructor(tag='div',attrs=''){this.tagName=tag.toUpperCase();this.style={};this.dataset={};this.events={};this.children=[];this.value='';this.textContent='';this.hidden=/\bhidden(?:\s|$)/.test(attrs);this.open=/\bopen(?:\s|$)/.test(attrs);this.clientHeight=570;this.clientWidth=800;this.classes=new Set();this.classList={add:(...v)=>v.forEach(x=>this.classes.add(x)),remove:(...v)=>v.forEach(x=>this.classes.delete(x)),contains:v=>this.classes.has(v),toggle:(v,b)=>{b=b===undefined?!this.classes.has(v):b;b?this.classes.add(v):this.classes.delete(v);return b}};for(const m of attrs.matchAll(/([\w-]+)="([^"]*)"/g)){if(m[1].startsWith('data-'))this.dataset[m[1].slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=m[2];else this[m[1]]=m[2]}if(this.id)els[this.id]=this}
  set innerHTML(s){this.html=s;this.children=parse(s)}get innerHTML(){return this.html||''}
  insertAdjacentHTML(_,s){this.html=(this.html||'')+s;this.children.push(...parse(s))}
- querySelectorAll(q){const out=[];function go(e){for(const a of e.children){if(q.split(',').includes(a.tagName.toLowerCase()))out.push(a);else if(q.startsWith('[data-')&&a.dataset[q.slice(6,-1)]!==undefined)out.push(a);else if(q==='input[type="range"],select'&&(a.type==='range'||a.tagName==='SELECT'))out.push(a);go(a)}}go(this);return out}
+ querySelectorAll(q){const out=[];function go(e){for(const a of e.children){if(q.split(',').includes(a.tagName.toLowerCase()))out.push(a);else if(q.startsWith('[data-')&&a.dataset[q.slice(6,-1).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]!==undefined)out.push(a);else if(q==='input[type="range"],select'&&(a.type==='range'||a.tagName==='SELECT'))out.push(a);go(a)}}go(this);return out}
  setAttribute(k,v){this[k]=v}getBoundingClientRect(){return {width:800,height:570,left:0,top:0}}getContext(){return g}
  addEventListener(k,f){(this.events[k]??=[]).push(f)}fire(k,extra={}){const e={target:this,preventDefault(){},...extra};this['on'+k]?.(e);for(const f of this.events[k]||[])f(e)}click(){this.fire('click')}focus(){sandbox.document.activeElement=this}scrollIntoView(){}setPointerCapture(){}toBlob(callback){callback(new Blob(['png']))}
 }
@@ -24,6 +24,44 @@ for(const v of ['raw','datum','centroid']){els['sim-basis'].value=v;els['sim-bas
 els['sim-complete'].click();assert(run('saved.completed.simulator'));
 run("render('precision');render('simulator');render('home');render('simulator')");assert(disposed>=2);assert(draws>100);
 console.log('PASS: studio startup, ten-section integration, 12 scene presets, five render modes, instruments, sliders, bases, section, progress and lifecycle cleanup. Renderer stub only.');
+// Version 5: progressive disclosure, focus and one-slider experiments.
+assert.equal(els['sim-drawer'].hidden,true);
+for(const el of els.lab.querySelectorAll('[data-panel-content]'))assert.equal(el.hidden,true);
+const pressKey=(key)=>{for(const fn of windowEvents.keydown||[])fn({key,preventDefault(){}})};
+for(const name of ['models','scenes','settings','learn','stats','export']){
+ const trigger=els['sim-open-'+name];trigger.focus();trigger.click();
+ assert.equal(els['sim-drawer'].hidden,false);assert.equal(trigger['aria-expanded'],true);
+ for(const el of els.lab.querySelectorAll('[data-panel-content]'))assert.equal(el.hidden,el.dataset.panelContent!==name);
+ assert.equal(sandbox.document.activeElement,els['sim-panel-close']);
+ if(name==='settings'){
+  const tab=els.lab.querySelectorAll('[data-parameter-tab]').find(el=>el.dataset.parameterTab==='cloud');tab.click();
+  assert.equal(els['sim-parameters-cloud'].hidden,false);assert.equal(els['sim-parameters-shape'].hidden,true);
+  els['sim-density'].focus();
+ }
+ pressKey('Escape');assert.equal(els['sim-drawer'].hidden,true);assert.equal(sandbox.document.activeElement,trigger);
+}
+els['sim-open-models'].click();els['sim-models'].querySelectorAll('[data-model]').find(el=>el.dataset.model==='gear').click();
+assert.equal(els['sim-drawer'].hidden,true);assert.equal(sandbox.document.activeElement,els['sim-open-models']);
+assert(els['sim-models'].innerHTML.includes('./models/gear.svg?v=5'));
+const quickKeys=['defect','bow','defect','shrink','density','section','section','layer','shift','bow','explode','section'];
+for(let i=0;i<12;i++){
+ els['sim-scene-select'].value=i;els['sim-scene-select'].fire('change');
+ const key=quickKeys[i],source=els['sim-'+key],quick=els['sim-quick'];
+ assert.equal(+quick.value,+source.value);assert.equal(+quick.max,+source.max);
+ quick.value=(+quick.min + +quick.max)/2;quick.fire('input');assert.equal(+source.value,+quick.value);
+ if(key==='section')assert(lastDraw.s.axis>=0);else assert.equal(lastDraw.s[key],+quick.value);
+ source.value=source.max;source.fire('input');assert.equal(+source.value,+quick.value);
+ els['sim-reset'].click();assert.equal(+source.value,+quick.value);
+}
+els['sim-scene-select'].value=8;els['sim-scene-select'].fire('change');
+assert.equal(lastDraw.s.basis,'raw');const rawRms=lastData.data.rms;
+els['sim-quick-basis'].click();assert.equal(lastDraw.s.basis,'datum');assert(lastData.data.rms<rawRms/100);
+els['sim-basis'].value='raw';els['sim-basis'].fire('change');assert.equal(els['sim-quick-basis']['aria-pressed'],false);
+els['sim-cut-toggle'].click();assert(lastDraw.s.axis>=0);els['sim-cut-toggle'].click();assert.equal(lastDraw.s.axis,-1);
+els['sim-open-learn'].click();assert.equal(els['sim-answer'].hidden,true);els['sim-reveal'].click();assert.equal(els['sim-answer'].hidden,false);els['sim-panel-close'].click();
+els['sim-open-scenes'].click();els['sim-scenes'].querySelectorAll('[data-scene]').find(el=>el.dataset.scene==='4').click();assert.equal(els['sim-drawer'].hidden,true);assert.equal(sandbox.document.activeElement,els['sim-open-scenes']);
+console.log('PASS: six closed-by-default panels, exclusive disclosure, Escape from input, focus return, visual model selection, all 12 quick sliders, two-way parameter sync, quick alignment, section toggle and hidden answers.');
+
 // Regressions raised by the five-role audit.
 (async()=>{
  const C=sandbox.SimCore;
@@ -68,7 +106,7 @@ console.log('PASS: studio startup, ten-section integration, 12 scene presets, fi
  els['sim-units'].value='1000';els['sim-units'].fire('change');assert.equal(els['sim-units'].value,1);assert.equal(lastData.mesh.size[0],3000);
  els['sim-report'].click();assert((await exported.at(-1).text()).includes('"Единицы файла STL";"мм"'));
  // Route explicitly sequences three teaching cases, then ends.
- els['sim-guide'].click();assert.equal(els['sim-scene-select'].value,8);els['sim-next'].click();assert.equal(els['sim-scene-select'].value,1);els['sim-next'].click();assert.equal(els['sim-scene-select'].value,4);els['sim-next'].click();assert.equal(els['sim-guide'].textContent,'Показ за 5 минут');
+ els['sim-guide'].click();assert.equal(els['sim-scene-select'].value,8);els['sim-next'].click();assert.equal(els['sim-scene-select'].value,1);els['sim-next'].click();assert.equal(els['sim-scene-select'].value,4);els['sim-next'].click();assert.equal(els['sim-guide'].textContent,'Показ · 5 мин');
  // Mode/model controls retain keyboard focus after rebuilding their markup.
  let modelButton=els['sim-models'].querySelectorAll('[data-model]').find(e=>e.dataset.model==='shaft');modelButton.focus();modelButton.click();assert.equal(sandbox.document.activeElement.dataset.model,'shaft');
  let modeButton=els['sim-modes'].querySelectorAll('[data-mode]').find(e=>e.dataset.mode==='deviation');modeButton.focus();modeButton.click();assert.equal(sandbox.document.activeElement.dataset.mode,'deviation');
@@ -77,7 +115,7 @@ console.log('PASS: studio startup, ten-section integration, 12 scene presets, fi
  keyboard('ArrowRight',true);keyboard('Enter');keyboard('Escape');keyboard('+');keyboard('-');keyboard('ArrowUp');
  // Enlarged UI leaves modes outside the viewport, so wrapping never covers the model.
  assert(els.lab.innerHTML.indexOf('sim-toolbar')<els.lab.innerHTML.indexOf('id="sim-stage"'));
- assert(els.lab.innerHTML.indexOf('id="sim-lesson"')<els.lab.innerHTML.indexOf('class="sim-inspector"'));
+ assert(els.lab.innerHTML.indexOf('id="sim-drawer"')<els.lab.innerHTML.indexOf('id="sim-lesson"'));assert(els['sim-drawer'].hidden);
  els['sim-focus'].click();assert(sandbox.document.body.classList.contains('studio-focus'));els['sim-focus'].click();assert(!sandbox.document.body.classList.contains('studio-focus'));
  els['sim-gl'].fire('wheel',{deltaY:100000});let visible=0;for(let i=0;i<lastData.mesh.p.length;i+=3){const p=[...lastData.data.actual.slice(i,i+3)],v=C.transform(lastDraw.vp,p);if(v[2]>=-1&&v[2]<=1)visible++}assert(visible>0);
  els['sim-fit'].click();els['sim-shot'].click();assert(exported.length>=4);
